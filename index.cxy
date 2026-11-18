@@ -1,0 +1,3 @@
+package mui_js
+
+export { hello } from "./src/hello.cxy"

@@ -1,0 +1,9 @@
+package:
+  name: mui-js
+  version: 0.1.0
+  license: MIT
+
+dependencies: []
+
+tests:
+  - file: "src/**/*.cxy"

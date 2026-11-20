@@ -1,171 +1,371 @@
 // mui-js/static/widgets/table.js
 import { h } from "../core.js";
 import { confirmAction } from "./dialog.js";
+import { Dropdown } from "./dropdown.js";
 
-// In-place editable table: rows are read-only until edit action clicked.
+// Accessible, headless In-Place Editable Table.
+// Rows are read-only until edit action clicked. Enter commits, Escape cancels.
 export class EditableTable {
     constructor(opts) {
         this.opts = opts;
-        this.rows = (opts.rows || []).map((r) => ({ ...r, saved: true }));
         this.columns = opts.columns || [];
-        this.editingRow = null;
-        this.labels = {
-            add: opts.labels?.add || "Add row",
-            save: opts.labels?.save || "Save",
-            edit: opts.labels?.edit || "Edit",
-            remove: opts.labels?.remove || ((r) => "Remove"),
-            cancel: opts.labels?.cancel || "Cancel",
-            ...opts.labels,
-        };
-
+        this.onChange = opts.onChange || (() => {});
+        this.rows = [];
         this.tbody = h("tbody");
-        this.table = h("table", { class: `editable-table ui-editable-table ${opts.className || ""}`.trim() },
-            h("thead", {},
-                h("tr", {},
-                    ...this.columns.map((c) => h("th", { class: c.cls || null }, c.label)),
-                    h("th", { class: "ui-actions-header" }, "")
-                )
-            ),
-            this.tbody
-        );
 
-        this.addBtn = opts.add
+        const labels = (this.labels = {
+            edit: "Edit",
+            save: "Save",
+            add: "Add",
+            remove: (row) => (row.saved ? "Delete" : "Discard"),
+            ...(opts.labels || {}),
+        });
+        if (typeof labels.remove === "string") {
+            const text = labels.remove;
+            labels.remove = () => text;
+        }
+
+        const add = opts.add === undefined ? { label: "+ Add" } : opts.add;
+        this.addButton = add
             ? h("button", {
                 type: "button",
                 class: "secondary outline add-row ui-add-row-btn",
-                onclick: () => this.addRow(),
-            }, typeof opts.add === "object" ? opts.add.label : "+ Add row")
+                onclick: add.onClick || (() => this.addNew()),
+            }, typeof add === "object" ? add.label : "+ Add")
             : null;
 
-        this.el = h("div", { class: "ui-table-wrap" }, this.table, this.addBtn);
-        this.renderAll();
-    }
-
-    renderAll() {
-        this.tbody.replaceChildren(...this.rows.map((row) => this.renderRow(row)));
-    }
-
-    renderRow(row) {
-        const isEditing = this.editingRow === row;
-        const cells = this.columns.map((col) => {
-            if (isEditing && col.edit) {
-                const input = h("input", {
-                    type: col.edit.type || "text",
-                    value: row[col.key] || "",
-                    placeholder: col.edit.placeholder || "",
-                    class: col.edit.mono ? "mono" : null,
-                });
-                row._inputs = row._inputs || {};
-                row._inputs[col.key] = input;
-                return h("td", { class: col.cls || null }, input);
-            }
-            const val = col.view ? col.view(row) : (row[col.key] || "--");
-            return h("td", { class: `${col.cls || ""} ${col.mono ? "mono" : ""}`.trim() }, val);
-        });
-
-        const removeLabel = typeof this.labels.remove === "function" ? this.labels.remove(row) : this.labels.remove;
-        const actions = h("td", { class: "ui-actions-cell" },
-            isEditing
-                ? [
-                    h("button", { type: "button", class: "ui-btn-save", "aria-label": "Save", onclick: () => this.saveRow(row) }, this.labels.save),
-                    h("button", { type: "button", class: "ui-btn-cancel", "aria-label": "Cancel", onclick: () => this.cancelRow(row) }, this.labels.cancel),
-                ]
-                : [
-                    h("button", { type: "button", class: "ui-btn-edit", "aria-label": "Edit", onclick: () => this.startEdit(row) }, this.labels.edit),
-                    h("button", { type: "button", class: "ui-btn-delete", "aria-label": "Delete", onclick: () => this.removeRow(row) }, removeLabel),
-                ]
+        this.el = h(
+            "div",
+            { class: `kv-editor ui-editable-table-wrap ${opts.className || ""}`.trim() },
+            h(
+                "table",
+                { class: `kv-table ui-editable-table ${opts.tableClass || ""}`.trim() },
+                h("thead", {},
+                    h("tr", {},
+                        ...this.columns.map((c) => h("th", { class: c.cls || null }, c.label)),
+                        h("th", { class: "ui-actions-header" }, "")
+                    )
+                ),
+                this.tbody
+            ),
+            opts.noteBeforeAdd ? h("p", { class: "muted ui-table-note" }, opts.noteBeforeAdd) : null,
+            this.addButton,
+            opts.noteAfterAdd ? h("p", { class: "muted ui-table-note" }, opts.noteAfterAdd) : null
         );
 
-        return h("tr", { class: isEditing ? "is-editing" : null }, ...cells, actions);
+        for (const data of opts.rows || []) this.#append({ saved: true, ...data });
     }
 
-    startEdit(row) {
-        this.editingRow = row;
-        this.renderAll();
-    }
-
-    cancelRow(row) {
-        if (!row.saved) {
-            this.rows = this.rows.filter((r) => r !== row);
+    #renderActionButton(actionName, label, onClick, cls = "") {
+        if (this.opts.renderAction) {
+            return this.opts.renderAction(actionName, label, onClick, cls);
         }
-        this.editingRow = null;
-        this.renderAll();
+        return h("button", {
+            type: "button",
+            class: `ui-table-action-btn ${cls}`.trim(),
+            "aria-label": label,
+            title: label,
+            onclick: onClick,
+        }, actionName === "check" ? "✓" : actionName === "pencil" ? "✎" : "✕");
     }
 
-    async saveRow(row) {
-        if (row._inputs) {
-            for (const col of this.columns) {
-                if (col.edit && row._inputs[col.key]) {
-                    row[col.key] = row._inputs[col.key].value.trim();
-                }
+    #append(data) {
+        const row = { saved: false, editing: false, ...data };
+        row.tr = h("tr");
+        row.errTr = h("tr", { class: "kv-error-row ui-table-error-row", hidden: true },
+            h("td", { colspan: this.columns.length + 1 },
+                (row.error = h("small", { class: "field-error ui-field-error", role: "alert" }))
+            )
+        );
+        row.detailsTr = this.opts.detailsRow
+            ? h("tr", { class: "kv-details-row ui-table-details-row", hidden: true },
+                h("td", { colspan: this.columns.length + 1 })
+            )
+            : null;
+        this.rows.push(row);
+        this.tbody.append(row.tr, ...(row.detailsTr ? [row.detailsTr] : []), row.errTr);
+        this.#render(row);
+        return row;
+    }
+
+    addNew(data = {}) {
+        const row = this.#append({ editing: true, ...(this.opts.blank ? this.opts.blank() : {}), ...data });
+        const first = Object.values(row.inputs)[0];
+        if (first) first.focus();
+        this.onChange();
+        return row;
+    }
+
+    rerender(row) {
+        this.#render(row);
+    }
+
+    upsert(data, key = "key") {
+        const k = this.opts.rowKey || ((r) => r[key]);
+        const existing = this.rows.find((r) => k(r) === k(data));
+        if (existing) {
+            Object.assign(existing, data);
+            this.#render(existing);
+            return existing;
+        }
+        return this.#append({ saved: true, ...data });
+    }
+
+    #input(col, row) {
+        const e = col.edit;
+        const placeholder = typeof e.placeholder === "function" ? e.placeholder(row) : e.placeholder;
+        const initial = e.initial ? e.initial(row) : e.type === "password" ? "" : (row[col.key] ?? "");
+        if (e.make && (!e.useMake || e.useMake(row))) {
+            const made = e.make(row);
+            made.input.__show = made.el;
+            return made.input;
+        }
+        if (e.type === "select") {
+            const dropdown = new Dropdown({
+                options: e.options,
+                value: initial,
+                placeholder: e.label || col.label,
+                className: "table-dropdown"
+            });
+            const input = dropdown.selectEl || dropdown;
+            input.__show = dropdown.el;
+            return input;
+        }
+        if (e.type === "checkbox") {
+            const box = h("input", { type: "checkbox", "aria-label": e.label || col.label });
+            box.checked = !!row[col.key];
+            return box;
+        }
+        return h("input", {
+            type: e.type === "password" ? "password" : "text",
+            class: e.mono ? "mono" : null,
+            value: initial,
+            placeholder,
+            autocomplete: e.autocomplete || (e.type === "password" ? "new-password" : "off"),
+            spellcheck: "false",
+        });
+    }
+
+    #valueOf(col, input) {
+        if (col.edit.type === "checkbox") return input.checked;
+        if (input.type === "checkbox") return input.checked ? "true" : "false";
+        return col.edit.trim ? input.value.trim() : input.value;
+    }
+
+    #render(row) {
+        row.inputs = {};
+        const cells = this.columns.map((col) => {
+            const editable = row.editing && col.edit && (!col.edit.when || col.edit.when(row));
+            let content;
+            if (editable) {
+                const input = (row.inputs[col.key] = this.#input(col, row));
+                content = input.__show || input;
+            } else if (col.view) {
+                content = col.view(row);
+            } else {
+                content = h("span", { class: col.mono ? "mono" : null }, row[col.key] ?? "");
             }
-        }
+            return h("td", { class: col.cls, "data-label": col.label }, content, col.decorate ? col.decorate(row) : null);
+        });
 
-        if (this.opts.validate) {
-            const err = this.opts.validate(row, this.rows);
-            if (err) return;
+        let actions = this.opts.rowActions ? this.opts.rowActions(row) : undefined;
+        if (actions === undefined) {
+            const editing = row.editing;
+            actions = [
+                ...(this.opts.extraActions && !editing ? [].concat(this.opts.extraActions(row)) : []),
+                editing
+                    ? this.#renderActionButton("check", row.saved ? this.labels.save : this.labels.add, () => this.#commit(row), "icon-save")
+                    : this.#renderActionButton(this.opts.editIcon || "pencil", this.labels.edit, () => (this.opts.onEdit ? this.opts.onEdit(row) : this.#startEdit(row))),
+                this.#renderActionButton("x", this.labels.remove(row), () => this.#remove(row), "icon-delete"),
+            ];
         }
+        row.tr.replaceChildren(...cells, h("td", { class: "kv-actions ui-table-actions" }, actions));
+        this.#renderDetails(row);
 
-        if (this.opts.onSave) {
-            await this.opts.onSave(row);
+        for (const [key, input] of Object.entries(row.inputs)) {
+            const touched = () => {
+                this.#setError(row, "");
+                this.onChange();
+            };
+            input.addEventListener("input", touched);
+            if (input.type === "checkbox") input.addEventListener("change", touched);
+            const col = this.columns.find((c) => c.key === key);
+            if (col && col.edit && col.edit.rerender) input.addEventListener("change", () => this.#redrawKeeping(row, key));
+            input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    this.#commit(row);
+                } else if (e.key === "Escape") {
+                    e.stopPropagation();
+                    this.#cancel(row);
+                }
+            });
         }
-
-        row.saved = true;
-        this.editingRow = null;
-        this.renderAll();
-        if (this.opts.onChange) this.opts.onChange(this.rows);
     }
 
-    async removeRow(row) {
-        if (this.opts.confirmRemove) {
-            const ok = await confirmAction(this.opts.confirmRemove(row));
-            if (!ok) return;
+    #renderDetails(row) {
+        if (!row.detailsTr) return;
+        row.details = this.opts.detailsRow(row);
+        const cell = row.detailsTr.firstChild;
+        cell.replaceChildren(...(row.details ? [row.details.el] : []));
+        row.detailsTr.hidden = !row.details;
+    }
+
+    #redrawKeeping(row, key) {
+        Object.assign(row, this.current(row));
+        this.#setError(row, "");
+        this.#render(row);
+        if (row.inputs[key]) row.inputs[key].focus();
+        this.onChange();
+    }
+
+    #setError(row, message) {
+        row.error.textContent = message;
+        row.errTr.hidden = !message;
+    }
+
+    #startEdit(row) {
+        row.editing = true;
+        row.snapshot = this.opts.detailsRow ? { ...this.current(row) } : null;
+        this.#render(row);
+        const focus = row.inputs[this.opts.focus] || Object.values(row.inputs)[0];
+        if (focus) focus.focus();
+        this.onChange();
+    }
+
+    #cancel(row) {
+        this.#setError(row, "");
+        if (!row.saved && !this.#hasCommitted(row)) {
+            this.#drop(row);
+            return;
         }
-        if (this.opts.onRemove && row.saved) {
-            await this.opts.onRemove(row);
-        }
+        if (row.snapshot) Object.assign(row, row.snapshot);
+        row.snapshot = null;
+        row.editing = false;
+        this.#render(row);
+        this.onChange();
+    }
+
+    #hasCommitted(row) {
+        return this.columns.some((c) => c.key && c.edit && !c.edit.writeOnly && row[c.key]);
+    }
+
+    #drop(row) {
         this.rows = this.rows.filter((r) => r !== row);
-        this.renderAll();
-        if (this.opts.onChange) this.opts.onChange(this.rows);
+        row.tr.remove();
+        if (row.detailsTr) row.detailsTr.remove();
+        row.errTr.remove();
+        this.onChange();
     }
 
-    addRow(initialValues = {}) {
-        const newRow = { ...initialValues, saved: false };
-        this.rows.push(newRow);
-        this.editingRow = newRow;
-        this.renderAll();
+    current(row) {
+        const out = {};
+        for (const col of this.columns) {
+            if (!col.key) continue;
+            const input = row.inputs && row.inputs[col.key];
+            out[col.key] = input ? this.#valueOf(col, input) : row[col.key];
+        }
+        if (row.details && row.details.values) Object.assign(out, row.details.values());
+        return out;
+    }
+
+    hasValue(row) {
+        return this.columns.some((col) => {
+            const input = row.inputs && row.inputs[col.key];
+            if (!input || col.edit.type === "select" || col.edit.type === "checkbox" || input.type === "checkbox") return false;
+            return col.edit.trim ? !!input.value.trim() : !!input.value;
+        });
+    }
+
+    #changed(row) {
+        return this.columns.some((col) => {
+            const input = row.inputs && row.inputs[col.key];
+            if (!input) return false;
+            if (col.edit.type === "checkbox") return input.checked !== !!row[col.key];
+            if (input.type === "checkbox") return (input.checked ? "true" : "false") !== String(row[col.key] ?? "false");
+            const initial = col.edit.initial ? col.edit.initial(row) : col.edit.type === "password" ? "" : (row[col.key] ?? "");
+            return input.value !== initial;
+        });
+    }
+
+    async #commit(row) {
+        const values = this.current(row);
+        if (this.opts.skipIfUnchanged && row.saved && !this.#changed(row)) return this.#cancel(row);
+
+        const problem = this.opts.validate ? this.opts.validate(row, values, this) : "";
+        if (problem) return this.#setError(row, problem);
+
+        if (this.opts.beforeSave && (await this.opts.beforeSave(row, values)) === false) return;
+
+        let patch = null;
+        if (this.opts.onSave) {
+            row.tr.classList.add("busy");
+            try {
+                patch = await this.opts.onSave(row, values, !row.saved);
+            } catch (e) {
+                this.#setError(row, e.message);
+                return;
+            } finally {
+                row.tr.classList.remove("busy");
+            }
+            if (patch === false) return;
+            row.saved = true;
+        }
+        for (const col of this.columns) {
+            if (col.key && col.edit && !col.edit.writeOnly) row[col.key] = values[col.key];
+        }
+        if (row.details && row.details.values) Object.assign(row, row.details.values());
+        Object.assign(row, patch || {});
+        row.snapshot = null;
+        row.editing = false;
+        this.#setError(row, "");
+        this.#render(row);
+        this.onChange();
+    }
+
+    async #remove(row) {
+        if (!row.saved || !this.opts.onRemove) return this.#drop(row);
+
+        const ask = this.opts.confirmRemove && this.opts.confirmRemove(row);
+        if (ask && !(await confirmAction({ confirmLabel: "Delete", danger: true, ...ask }))) return;
+
+        row.tr.classList.add("busy");
+        try {
+            await this.opts.onRemove(row);
+        } catch (e) {
+            this.#setError(row, e.message);
+            return;
+        } finally {
+            row.tr.classList.remove("busy");
+        }
+        this.#drop(row);
+    }
+
+    isDirty() {
+        return this.rows.some((row) => row.editing && (row.saved ? this.#changed(row) : this.hasValue(row)));
+    }
+
+    validateRows() {
+        let ok = true;
+        for (const row of this.rows) {
+            if (row.editing && !row.saved && !this.hasValue(row)) continue;
+            const problem = this.opts.validate ? this.opts.validate(row, this.current(row), this) : "";
+            this.#setError(row, problem);
+            if (problem) ok = false;
+        }
+        return ok;
     }
 }
 
-// Key-value configuration editor with duplicate detection.
+// Simple key-value editor backed by EditableTable
 export class KeyValueEditor extends EditableTable {
-    constructor(initial = {}, { onSave = null, onRemove = null, onChange = () => {} } = {}) {
+    constructor(initial = {}, { onSave = null, onRemove = null, onChange = () => {}, keyLabel = "Key", valueLabel = "Value" } = {}) {
         super({
-            rows: Object.entries(initial).map(([name, item]) => ({
-                name,
-                value: typeof item === "object" ? (item.value || "") : item,
-            })),
+            rows: Object.entries(initial).map(([key, value]) => ({ key, value: String(value ?? "") })),
             columns: [
-                {
-                    label: "Name",
-                    key: "name",
-                    mono: true,
-                    edit: { type: "text", placeholder: "NAME", mono: true, when: (r) => !r.saved },
-                },
-                {
-                    label: "Value",
-                    key: "value",
-                    mono: true,
-                    edit: { type: "text", placeholder: "VALUE", mono: true },
-                },
+                { label: keyLabel, key: "key", mono: true, edit: { type: "text", placeholder: keyLabel, mono: true, trim: true, when: (r) => !r.saved } },
+                { label: valueLabel, key: "value", mono: true, edit: { type: "text", placeholder: valueLabel, mono: true } },
             ],
-            validate: (row, all) => {
-                if (!row.name) return "Name is required.";
-                if (all.filter((r) => r !== row && r.name === row.name).length > 0) {
-                    return `"${row.name}" already exists.`;
-                }
-                return "";
-            },
             onSave,
             onRemove,
             onChange,
@@ -174,8 +374,9 @@ export class KeyValueEditor extends EditableTable {
 
     toApi() {
         const out = {};
-        for (const r of this.rows) {
-            if (r.name) out[r.name] = { value: r.value || "" };
+        for (const row of this.rows) {
+            const v = this.current(row);
+            if (v.key) out[v.key] = v.value;
         }
         return out;
     }

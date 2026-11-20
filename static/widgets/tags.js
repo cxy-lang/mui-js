@@ -38,42 +38,30 @@ export class TagInput {
             suggestions.map((t) => h("option", { value: t }))
         );
 
+        const row = h("div", { class: "tag-row ui-tag-row" }, this.chips, this.input, datalist);
         this.el = h("div", { class: `tag-input ui-tag-input ${className}`.trim() },
-            this.input,
-            this.chips,
-            this.note,
-            datalist
+            row,
+            this.note
         );
 
-        this.input.addEventListener("keydown", (e) => this.#onKey(e));
-        this.input.addEventListener("input", () => this.setNote(null));
+        for (const t of tags) this.#push(t);
 
-        for (const t of tags) this.add(t, false);
+        this.input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                this.commit();
+            } else if (e.key === "Backspace" && !this.input.value && this.tags.length > 0) {
+                this.remove(this.tags[this.tags.length - 1]);
+            }
+        });
+
+        this.input.addEventListener("blur", () => this.commit());
     }
 
-    setNote(msg, isError = false) {
-        this.note.textContent = msg || "";
-        this.note.classList.toggle("field-error", isError);
-        this.note.hidden = !msg;
-    }
-
-    add(raw, notify = true) {
-        const tag = (raw || "").trim();
-        if (!tag) return false;
-
-        if (tag.length > this.maxLength) {
-            this.setNote(`Each ${this.noun} must be at most ${this.maxLength} characters.`, true);
-            return false;
-        }
-
-        if (this.tags.includes(tag)) {
-            this.setNote(`"${tag}" is already added.`, true);
-            return false;
-        }
-
+    #push(tag) {
         this.tags.push(tag);
-        const chip = h("span", { class: "tag-chip ui-tag-chip", "data-tag": tag },
-            h("span", { class: "tag-name ui-tag-name" }, tag),
+        const chip = h("span", { class: "tag-chip mono ui-tag-chip", "data-tag": tag },
+            tag,
             h("button", {
                 type: "button",
                 class: "tag-x ui-tag-remove",
@@ -82,28 +70,41 @@ export class TagInput {
             }, this.removeIcon)
         );
         this.chips.append(chip);
+    }
 
-        if (notify) this.onChange(this.tags);
+    // Moves the typed text into a chip; returns false (with a note) if it is rejected.
+    commit() {
+        const text = this.input.value.replace(/,/g, "").trim();
+        this.input.value = "";
+        this.note.textContent = "";
+        if (!text) return true;
+        if (text.length > this.maxLength) {
+            const article = /^[aeiou]/i.test(this.noun) ? "An" : "A";
+            this.note.textContent = `${article} ${this.noun} is at most ${this.maxLength} characters.`;
+            return false;
+        }
+        if (!this.tags.includes(text)) {
+            this.#push(text);
+            this.onChange(this.tags);
+        }
         return true;
     }
 
     remove(tag) {
-        const idx = this.tags.indexOf(tag);
-        if (idx === -1) return;
-        this.tags.splice(idx, 1);
-        const chip = this.chips.querySelector(`[data-tag="${CSS.escape(tag)}"]`);
-        if (chip) chip.remove();
+        this.tags = this.tags.filter((t) => t !== tag);
+        for (const chip of this.chips.querySelectorAll(".tag-chip")) {
+            if (chip.dataset.tag === tag) chip.remove();
+        }
         this.onChange(this.tags);
     }
 
-    #onKey(e) {
-        if (e.key === "Enter" || e.key === ",") {
-            e.preventDefault();
-            if (this.add(this.input.value)) {
-                this.input.value = "";
-            }
-        } else if (e.key === "Backspace" && !this.input.value && this.tags.length > 0) {
-            this.remove(this.tags[this.tags.length - 1]);
-        }
+    set(tags) {
+        this.tags = [];
+        this.chips.replaceChildren();
+        for (const t of tags) this.#push(t);
+    }
+
+    focus() {
+        this.input.focus();
     }
 }

@@ -141,3 +141,15 @@ export class Component {
         this.#unsubs = [];
     }
 }
+
+// Prompts before leaving the page while isDirty() returns true. Returns an unregister function.
+export function dirtyGuard(isDirty) {
+    if (typeof window === "undefined" || !window.addEventListener) return () => {};
+    const handler = (e) => {
+        if (!isDirty()) return;
+        e.preventDefault();
+        e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+}

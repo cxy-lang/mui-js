@@ -129,15 +129,15 @@ class SsrPage[EndPoint, Context, Page, Layout] {
                     this.render(resp)
                 }
                 else {
-                    var model: PageModel = null
+                    var model: PageModel? = null
                     #if #Context == #NoContext {
                         model = Page.process(&mws, &ctxs, req, resp)
                     }
                     else {
                         model = Page.process(&this._context, &mws, &ctxs, req, resp)
                     }
-                    if (resp.isComplete()) return;
-                    this.render(&&model, resp)
+                    if (resp.isComplete() || !model) return;
+                    this.render(&&(*model), resp)
                 }
             }
             else {
@@ -151,15 +151,15 @@ class SsrPage[EndPoint, Context, Page, Layout] {
                     this.render(resp)
                 }
                 else {
-                    var model: PageModel = null
+                    var model: PageModel? = null
                     #if #Context == #NoContext {
                         model = Page.process(&mws, req, resp)
                     }
                     else {
                         model = Page.process(&this._context, &mws, req, resp)
                     }
-                    if (resp.isComplete()) return;
-                    this.render(&&model, resp)
+                    if (resp.isComplete() || !model) return;
+                    this.render(&&(*model), resp)
                 }
             }
         }
@@ -182,15 +182,15 @@ class SsrPage[EndPoint, Context, Page, Layout] {
                     this.render(resp)
                 }
                 else {
-                    var model: PageModel = null
+                    var model: PageModel? = null
                     #if #Context == #NoContext {
                         model = Page.process(&ctxs, req, resp)
                     }
                     else {
                         model = Page.process(&this._context, &ctxs, req, resp)
                     }
-                    if (resp.isComplete()) return;
-                    this.render(&&model, resp)
+                    if (resp.isComplete() || !model) return;
+                    this.render(&&(*model), resp)
                 }
             }
             else {
@@ -204,14 +204,15 @@ class SsrPage[EndPoint, Context, Page, Layout] {
                     this.render(resp)
                 }
                 else {
-                    var model: PageModel = null
+                    var model: PageModel? = null
                     #if #Context == #NoContext {
                         model = Page.process(req)
                     }
                     else {
                         model = Page.process(&this._context, req)
                     }
-                    this.render(&&model, resp)
+                    if (resp.isComplete() || !model) return;
+                    this.render(&&(*model), resp)
                 }
             }
         }

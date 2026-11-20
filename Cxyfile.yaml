@@ -2,8 +2,18 @@ package:
   name: mui-js
   version: 0.1.0
   license: MIT
+  author: Carter Mbotho<lastcarter@gmail.com>
+  description: Micro UI framework and zero-npm bundler for Cxy web applications
 
-dependencies: []
+dependencies:
+  - name: cxyml
+    repository: https://github.com/cxy-lang/cxyml.git
+    version: '*'
 
-tests:
-  - file: "src/**/*.cxy"
+install:
+  - name: build-dist
+    script: node tools/build.mjs --self
+
+scripts:
+  build: node tools/build.mjs --self
+  test: node --test tests/*.test.mjs

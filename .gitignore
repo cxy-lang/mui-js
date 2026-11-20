@@ -1,5 +1,6 @@
 # Generated C files
 app.c
+/app
 
 # Build artifacts
 /build/
@@ -25,3 +26,5 @@ Thumbs.db
 Cxyfile.lock
 .cxy/
 .build/
+/dist/
+examples/app/ui-static/mui/

@@ -1,0 +1,285 @@
+module ssr
+
+import { Request, Response } from "stdlib/http.cxy"
+import { View } from "@cxyml"
+
+pub class Insert: View {
+    _view: View = null
+    func `init`(view: View) { _view = &&view }
+
+    @override
+    func render(os: &OutputStream) {
+        _view.render(os)
+    }
+}
+
+struct NoLayout {}
+struct NoContext {}
+
+pub struct Model[P, L] {
+    `isModel = true
+    props: P
+    layout: L
+}
+
+class SsrPage[EndPoint, Context, Page, Layout] {
+    type LayoutProps = #{has_type!(#Layout, :Props)? #Layout.Props: #void}
+    type PageProps = #{has_type!(#Page, :Props)? #Page.Props: #void}
+    type _PageModel = #{PageProps.isVoid? #LayoutProps: #Model[PageProps, LayoutProps]}
+    type PageModel = #{LayoutProps.isVoid? #PageProps: #_PageModel}
+
+    _endpoint: &EndPoint
+    _path: String
+
+    #if (#Context != #NoContext) {
+        _context: Context
+        func `init`(endpoint: &EndPoint, context: Context, path: String) {
+            _endpoint = endpoint
+            _context = &&context
+            _path = &&path
+        }
+    }
+    else {
+        func `init`(endpoint: &EndPoint, path: String) {
+            _endpoint = endpoint
+            _path = &&path
+        }
+    }
+
+    #if (Model.isVoid) {
+        @private
+        func render(resp: &Response): !void {
+            resp.header("Content-Type", "text/html")
+            #if #Layout == #NoLayout {
+                var page = Page()
+                page.render(resp.body())
+            }
+            else {
+                var layout = Layout(Page())
+                layout.render(resp.body())
+            }
+        }
+    }
+    else {
+        @private
+        func render(model: PageModel, resp: &Response): !void {
+            resp.header("Content-Type", "text/html")
+            #if !LayoutProps.isVoid {
+                #if #PageModel == #LayoutProps {
+                    var layout = Layout(
+                        &&model,
+                        Page()
+                    )
+                    layout.render(resp.body())
+                }
+                else {
+                    require!(
+                        has_member!(#PageModel, :props, #PageProps),
+                        "model must have :props member of type {t}",
+                        #PageProps
+                    )
+                    var layout = Layout(
+                        &&model.layout,
+                        Page(&&model.props)
+                    )
+                    layout.render(resp.body())
+                }
+            }
+            else {
+                #if #PageModel == #PageProps {
+                    var layout = Layout(
+                        Page(&&model)
+                    )
+                    layout.render(resp.body())
+                }
+                else {
+                    var layout = Layout(
+                        Page()
+                    )
+                    layout.render(resp.body())
+                }
+            }
+        }
+    }
+
+    @private
+    func handle(req: &const Request, resp: &Response): !void {
+        #if (has_type!(#Page, :Middlewares)) {
+            var mws: Page.Middlewares = null
+            #for i in 0..Page.Middlewares.membersCount {
+                #const M = typeat!(#Page.Middlewares, #{i})
+                mws.#{i} = _endpoint.middleware[#{M}]()
+            }
+
+            #if (has_type!(#Page, :Contexts)) {
+                #const Contexts = #`Page.Contexts as C,i => C.Context`
+                var ctxs: #{Contexts} = null
+                #for i in 0..Contexts.membersCount {
+                    #const C = typeat!(#Page.Contexts, #{i})
+                    ctxs.#{i} = _endpoint.context[#{C}](req)
+                }
+
+                #if PageModel.isVoid {
+                    #if #Context == #NoContext {
+                        Page.process(&mws, &ctxs, req)
+                    }
+                    else {
+                        Page.process(&this._context, &mws, &ctxs, req)
+                    }
+                    this.render(resp)
+                }
+                else {
+                    var model: PageModel = null
+                    #if #Context == #NoContext {
+                        model = Page.process(&mws, &ctxs, req)
+                    }
+                    else {
+                        model = Page.process(&this._context, &mws, &ctxs, req)
+                    }
+                    this.render(&&model, resp)
+                }
+            }
+            else {
+                #if PageModel.isVoid {
+                    #if #Context == #NoContext {
+                        Page.process(&mws, req)
+                    }
+                    else {
+                        Page.process(&this._context, &mws, req)
+                    }
+                    this.render(resp)
+                }
+                else {
+                    var model: PageModel = null
+                    #if #Context == #NoContext {
+                        model = Page.process(&mws, req)
+                    }
+                    else {
+                        model = Page.process(&this._context, &mws, req)
+                    }
+                    this.render(&&model, resp)
+                }
+            }
+        }
+        else {
+            #if (has_type!(#Page, :Contexts)) {
+                #const Contexts = #`Page.Contexts as C,i => C.Context`
+                var ctxs: #{Contexts} = null
+                #for i in 0..Contexts.membersCount {
+                    #const C = typeat!(#Page.Contexts, i)
+                    ctxs.#{i} = _endpoint.context[#{C}](req)
+                }
+
+                #if PageModel.isVoid {
+                    #if #Context == #NoContext {
+                        Page.process(&ctxs, req)
+                    }
+                    else {
+                        Page.process(&this._context, &ctxs, req)
+                    }
+                    this.render(resp)
+                }
+                else {
+                    var model: PageModel = null
+                    #if #Context == #NoContext {
+                        model = Page.process(&ctxs, req)
+                    }
+                    else {
+                        model = Page.process(&this._context, &ctxs, req)
+                    }
+                    this.render(&&model, resp)
+                }
+            }
+            else {
+                #if PageModel.isVoid {
+                    #if #Context == #NoContext {
+                        Page.process(req)
+                    }
+                    else {
+                        Page.process(&this._context, req)
+                    }
+                    this.render(resp)
+                }
+                else {
+                    var model: PageModel = null
+                    #if #Context == #NoContext {
+                        model = Page.process(req)
+                    }
+                    else {
+                        model = Page.process(&this._context, req)
+                    }
+                    this.render(&&model, resp)
+                }
+            }
+        }
+    }
+
+    func mount() {
+        // Create a route for the page
+        var page = @copy this
+        var route = _endpoint(_path.str(), |&&page|(req: &const Request, resp: &Response): !void  => {
+            page.handle(req, resp)
+        })
+
+        #if #Context != #NoContext {
+            #if (has_member!(Page, "mount", #func(_: &Context) -> void)) {
+                // Mount the route
+                Page.mount(&this._context, route)
+            }
+        }
+    }
+}
+
+pub class Ssr[Endpoint, Layout = NoLayout] {
+    _endpoint: &Endpoint
+    _prefix: String
+    func `init`(endpoint: &Endpoint, prefix: String) {
+        _endpoint = endpoint
+        if prefix == null {
+            _prefix = String("/")
+        } else {
+            if !prefix.startswith("/") {
+                prefix = f"/{prefix}"
+            }
+            _prefix = &&prefix
+        }
+    }
+
+    func createPath(postfix: strview) {
+        if !_prefix.endswith("/") {
+            if postfix.startswith("/") {
+                return f"{_prefix}{postfix}"
+            }
+            return f"{_prefix}/{postfix}"
+        }
+        if postfix.startswith("/") {
+            return f"{_prefix}{postfix.substr(1)}"
+        }
+        return f"{_prefix}{postfix}"
+    }
+
+    func page[Page](...ctx: auto) {
+        #const pageAttr = Page.attributes.[:page]
+        require!(
+            !!pageAttr, "Page '{t}' must have a `page` attribute", #Page
+        )
+        #const pathArg = pageAttr.[0]
+        require!(
+            !!pathArg, "Page '{t}' must have a `page` attribute", #Page
+        )
+        var path = createPath(strview(#{pathArg}))
+
+        #if (len!(ctx) == 1) {
+            #const Context = typeof!(ctx)
+            var page = SsrPage[Endpoint, Context, Page, Layout](&_endpoint, &&ctx, &&path)
+            // Mounts the page to the endpoint
+            page.mount()
+        }
+        else {
+            require!(len!(ctx) == 0, "only one context or no context is allowed")
+            var page = SsrPage[Endpoint, NoContext, Page, Layout](&_endpoint, &&path)
+            // Mounts the page to the endpoint
+            page.mount()
+        }
+    }
+}

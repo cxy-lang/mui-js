@@ -1,0 +1,62 @@
+// mui-js/src/props.cxy
+module mui_props
+
+import { View } from "@cxyml"
+import { toJSON } from "stdlib/json.cxy"
+
+// Serializes a model into a JSON string.
+pub func jsonOf[T](value: &const T): String {
+    var out = String()
+    toJSON(&out, value)
+    return &&out
+}
+
+// Safely escapes characters for embedding JSON within <script type="application/json">.
+pub func escapeForScript(json: strview): String {
+    var out = String()
+    var n = json.size()
+    var i = 0.u64
+    while i < n {
+        var c = json.[i]
+        var b = c as u8
+        if c == '<'.char {
+            out << "\\u003c"
+        } else if b == 0xE2.u8 && i + 2 < n && (json.[i + 1] as u8) == 0x80.u8 && ((json.[i + 2] as u8) == 0xA8.u8 || (json.[i + 2] as u8) == 0xA9.u8) {
+            out << ((json.[i + 2] as u8) == 0xA8.u8 ? "\\u2028" : "\\u2029")
+            i += 2
+        } else {
+            out.append(ptrof c, 1)
+        }
+        i += 1
+    }
+    return &&out
+}
+
+// Emits an inert <script type="application/json"> block for hydrating client widgets.
+pub class JsonProps: View {
+    _id: String
+    _props: String
+
+    func `init`(id: String, props: String) {
+        _id = &&id
+        _props = &&props
+    }
+
+    @override
+    func render(os: &OutputStream): void {
+        os << "<script type=\"application/json\" id=\"" << _id << "\">" << escapeForScript(_props.s()) << "</script>"
+    }
+}
+
+test "escapeForScript and JsonProps" {
+    var raw = "{\"html\":\"<script>alert(1)</script>\"}".s
+    var escaped = escapeForScript(raw)
+    ok!(!escaped.s().contains("<"))
+    ok!(escaped.s().contains("\\u003c"))
+
+    var view = JsonProps("props-test".S, String(raw))
+    var buf = String()
+    view.render(&buf)
+    ok!(buf.s().contains("id=\"props-test\""))
+    ok!(buf.s().contains("\\u003cscript"))
+}

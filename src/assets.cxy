@@ -1,0 +1,159 @@
+// mui-js/src/assets.cxy
+module mui_assets
+
+import { View } from "@cxyml"
+import { exists } from "stdlib/path.cxy"
+import { execute, readAll } from "stdlib/os.cxy"
+import { HashMap } from "stdlib/hash.cxy"
+import { Vector } from "stdlib/vector.cxy"
+import { parse } from "stdlib/json.cxy"
+
+@json
+pub struct Manifest {
+    assets = HashMap[String, String]()
+    preload = HashMap[String, String]()
+    eager = Vector[String]()
+    appScript: String = null
+    func `init`() {}
+}
+
+var _muiManifest: Manifest? = null
+
+// In development, copies pre-built mui-js distribution files into the application's
+// static root directory under `<rootDir>/.mui-dev` (e.g. `./ui-static/.mui-dev`).
+// The existing FileServer serving `<rootDir>` at `/static` serves them at `/static/.mui-dev/*`.
+// Consuming projects should add `<rootDir>/.mui-dev/` to their .gitignore.
+pub func serveMuiDev(
+    rootDir: strview = "./ui-static".s,
+    targetSubdir: strview = ".mui-dev".s,
+    distDir: strview = strview()
+): !void {
+    var sourceDir = String()
+    if !distDir.empty() {
+        sourceDir = String(distDir)
+    } else if exists(".cxy/packages/mui-js/.cxy/build/dist") {
+        sourceDir = ".cxy/packages/mui-js/.cxy/build/dist".S
+    } else if exists("../mui-js/.cxy/build/dist") {
+        sourceDir = "../mui-js/.cxy/build/dist".S
+    } else if exists(".cxy/build/dist") {
+        sourceDir = ".cxy/build/dist".S
+    } else if exists("./dist") {
+        sourceDir = "./dist".S
+    }
+
+    if sourceDir.empty() || !exists(sourceDir.str()) {
+        return
+    }
+
+    var target = f"{rootDir}/{targetSubdir}"
+    var cmd = f"mkdir -p '{target}' && cp -R '{sourceDir}'/* '{target}/'"
+    execute(cmd.str(), {}) catch discard
+    var manifestFile = f"{target}/manifest.json"
+    loadMuiManifest(manifestFile.str())
+}
+
+// Loads mui manifest from the specified path or standard locations.
+pub func loadMuiManifest(manifestPath: string = null): bool {
+    var p = String()
+    if manifestPath != null && !strview(manifestPath).empty() {
+        p = String(manifestPath)
+    } else if exists(".cxy/build/dist/manifest.json") {
+        p = ".cxy/build/dist/manifest.json".S
+    } else if exists(".cxy/packages/mui-js/.cxy/build/dist/manifest.json") {
+        p = ".cxy/packages/mui-js/.cxy/build/dist/manifest.json".S
+    } else if exists("../mui-js/.cxy/build/dist/manifest.json") {
+        p = "../mui-js/.cxy/build/dist/manifest.json".S
+    } else if exists("dist/manifest.json") {
+        p = "dist/manifest.json".S
+    }
+
+    if p.empty() || !exists(p.str()) {
+        return false
+    }
+
+    var data = readAll(p.str()) catch {
+        return false
+    }
+
+    var parsed = parse[Manifest](data.s()) catch {
+        return false
+    }
+
+    _muiManifest = &&parsed
+
+    if parsed.assets.empty() {
+        return false
+    }
+    return true
+}
+
+// Resolves a logical asset name (e.g. "skeleton.css", "core.js", "app.js") to its hashed path.
+pub func muiAssetUrl(name: strview, devPrefix: strview = "/static".s): String {
+    if !_muiManifest {
+        loadMuiManifest()
+    }
+    if _muiManifest {
+        var hit = _muiManifest&.assets.[String(name)]
+        if hit {
+            return @copy *hit
+        }
+    }
+    return f"{devPrefix}/{name}"
+}
+
+pub class MuiAssets: View {
+    func `init`() {}
+
+    @override
+    func render(os: &OutputStream): void {
+        // Skeleton CSS
+        var skel = muiAssetUrl("skeleton.css".s)
+        if !skel.empty() {
+            os << "  <link rel=\"stylesheet\" href=\"" << skel << "\" />\n"
+        }
+
+        if _muiManifest {
+            var hasMuiModules = false
+            for asset in _muiManifest&.assets {
+                if asset.0.startswith("core".s) || asset.0.startswith("widgets".s) || asset.0.startswith("boot".s) {
+                    hasMuiModules = true
+                    break
+                }
+            }
+
+            if hasMuiModules {
+                os << "<script type=\"importmap\">{\"imports\": {"
+                var first = true
+                for asset in _muiManifest&.assets {
+                    if !asset.0.endswith(".js".s) {
+                        continue
+                    }
+                    if !first {
+                        os << ", "
+                    }
+                    first = false
+
+                    // 1. Direct path: "/static/.mui-dev/core.js" -> hashed URL
+                    os << " \"/static/.mui-dev/" << asset.0 << "\": \"" << asset.1 << "\", "
+                    // 2. Bare specifier with extension: "mui/core.js" -> hashed URL
+                    os << " \"mui/" << asset.0 << "\": \"" << asset.1 << "\""
+
+                    // 3. Bare specifier without extension: "mui/core" -> hashed URL
+                    var dotIdx = asset.0.rIndexOf('.'`char)
+                    if dotIdx {
+                        var withoutExt = asset.0.substr(0.u64, <i64>*dotIdx)
+                        os << ", \"mui/" << withoutExt << "\": \"" << asset.1 << "\""
+                    }
+                }
+                os << "}}</script>\n"
+            }
+        }
+    }
+}
+
+test "serveMuiDev copies files" {
+    if exists(".cxy/build/dist") {
+        serveMuiDev("/tmp/mui-dev-test".s, ".mui-dev".s, ".cxy/build/dist".s) catch discard
+        ok!(exists("/tmp/mui-dev-test/.mui-dev/manifest.json"))
+    }
+}

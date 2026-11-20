@@ -283,13 +283,13 @@ pub class Ssr[Endpoint, Layout = NoLayout] {
 
         #if (len!(ctx) == 1) {
             #const Context = typeof!(ctx)
-            var page = SsrPage[Endpoint, Context, Page, Layout](&_endpoint, &&ctx, &&path)
+            var page = SsrPage[Endpoint, Context, Page, Layout](_endpoint, &&ctx, &&path)
             // Mounts the page to the endpoint
             page.mount()
         }
         else {
             require!(len!(ctx) == 0, "only one context or no context is allowed")
-            var page = SsrPage[Endpoint, NoContext, Page, Layout](&_endpoint, &&path)
+            var page = SsrPage[Endpoint, NoContext, Page, Layout](_endpoint, &&path)
             // Mounts the page to the endpoint
             page.mount()
         }

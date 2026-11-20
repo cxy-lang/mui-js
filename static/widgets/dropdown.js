@@ -38,7 +38,7 @@ export class Dropdown {
             this.selectEl = h("select", {
                 name,
                 class: "ui-dropdown-select",
-                style: { position: "absolute", opacity: "0", pointerEvents: "none", width: "1px", height: "1px" },
+                style: { display: "none" },
                 tabindex: "-1",
                 "aria-hidden": "true",
             }, ...this.rawOptions.map((o) => h("option", { value: o.value }, o.label)));

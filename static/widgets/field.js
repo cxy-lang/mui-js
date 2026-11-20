@@ -54,6 +54,5 @@ export class Field {
         this.el.setAttribute("data-invalid", message ? "true" : "false");
         this.input.setAttribute("aria-invalid", message ? "true" : "false");
         this.note.textContent = message || this.hint;
-        this.note.classList.toggle("field-error", !!message);
     }
 }

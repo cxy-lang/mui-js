@@ -131,11 +131,12 @@ class SsrPage[EndPoint, Context, Page, Layout] {
                 else {
                     var model: PageModel = null
                     #if #Context == #NoContext {
-                        model = Page.process(&mws, &ctxs, req)
+                        model = Page.process(&mws, &ctxs, req, resp)
                     }
                     else {
-                        model = Page.process(&this._context, &mws, &ctxs, req)
+                        model = Page.process(&this._context, &mws, &ctxs, req, resp)
                     }
+                    if (resp.isComplete()) return;
                     this.render(&&model, resp)
                 }
             }
@@ -152,11 +153,12 @@ class SsrPage[EndPoint, Context, Page, Layout] {
                 else {
                     var model: PageModel = null
                     #if #Context == #NoContext {
-                        model = Page.process(&mws, req)
+                        model = Page.process(&mws, req, resp)
                     }
                     else {
-                        model = Page.process(&this._context, &mws, req)
+                        model = Page.process(&this._context, &mws, req, resp)
                     }
+                    if (resp.isComplete()) return;
                     this.render(&&model, resp)
                 }
             }
@@ -182,11 +184,12 @@ class SsrPage[EndPoint, Context, Page, Layout] {
                 else {
                     var model: PageModel = null
                     #if #Context == #NoContext {
-                        model = Page.process(&ctxs, req)
+                        model = Page.process(&ctxs, req, resp)
                     }
                     else {
-                        model = Page.process(&this._context, &ctxs, req)
+                        model = Page.process(&this._context, &ctxs, req, resp)
                     }
+                    if (resp.isComplete()) return;
                     this.render(&&model, resp)
                 }
             }
@@ -226,6 +229,10 @@ class SsrPage[EndPoint, Context, Page, Layout] {
                 // Mount the route
                 Page.mount(&this._context, route)
             }
+        }
+        else #if (has_member!(#Page, :mount, #func(_: &Route) -> void)) {
+            // Mount the route
+            Page.mount(route)
         }
     }
 }

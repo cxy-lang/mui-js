@@ -1,23 +1,61 @@
 // mui-js/static/widgets/dropdown.js
 import { h } from "../core.js";
 
-// Accessible, headless Dropdown Menu popover.
+// Accessible, headless Dropdown component.
+// Supports two modes:
+// 1. Action Menu: { trigger, items: [...] } (popover menu with actions/links)
+// 2. Select Picker: { name, value, options: [...], onChange } (form select replacement)
 export class Dropdown {
     constructor({
-        trigger,
-        items = [],
+        trigger = null,
+        items = null,
+        options = null,
+        value = "",
+        name = "",
+        placeholder = "Select...",
+        onChange = () => {},
         align = "left", // "left" | "right"
         className = "",
     } = {}) {
-        this.items = items;
+        this.align = align;
+        this.onChange = onChange;
         this.isOpen = false;
         this.activeIndex = -1;
+        this._listeners = new Map();
 
         const menuId = `menu-${Math.random().toString(36).slice(2, 8)}`;
 
-        this.triggerBtn = typeof trigger === "string"
-            ? h("button", { type: "button", class: "ui-dropdown-trigger" }, trigger)
-            : trigger;
+        if (options !== null) {
+            // Select Mode
+            this.mode = "select";
+            this.rawOptions = options.map((opt) =>
+                typeof opt === "object" && opt !== null ? { value: String(opt.value), label: String(opt.label ?? opt.value) } : { value: String(opt), label: String(opt) }
+            );
+            this._value = String(value ?? "");
+            this.name = name;
+            this.placeholder = placeholder;
+
+            this.hiddenInput = h("input", { type: "hidden", name, value: this._value });
+            this.labelSpan = h("span", { class: "ui-dropdown-label" }, this.#labelFor(this._value));
+            this.arrowSpan = h("span", { class: "ui-dropdown-arrow", "aria-hidden": "true" }, " ▾");
+
+            this.triggerBtn = typeof trigger === "string"
+                ? h("button", { type: "button", class: "ui-dropdown-trigger select-trigger" }, trigger)
+                : (trigger || h("button", { type: "button", class: "ui-dropdown-trigger select-trigger" }, this.labelSpan, this.arrowSpan));
+
+            this.items = this.rawOptions.map((opt) => ({
+                label: opt.label,
+                value: opt.value,
+                action: () => this.select(opt.value),
+            }));
+        } else {
+            // Action Menu Mode
+            this.mode = "menu";
+            this.items = items || [];
+            this.triggerBtn = typeof trigger === "string"
+                ? h("button", { type: "button", class: "ui-dropdown-trigger" }, trigger)
+                : (trigger || h("button", { type: "button", class: "ui-dropdown-trigger" }, "Options ▾"));
+        }
 
         this.triggerBtn.setAttribute("aria-haspopup", "menu");
         this.triggerBtn.setAttribute("aria-expanded", "false");
@@ -30,9 +68,12 @@ export class Dropdown {
             hidden: true,
         });
 
+        const children = [this.triggerBtn, this.menu];
+        if (this.hiddenInput) children.unshift(this.hiddenInput);
+
         this.el = h("div", {
-            class: `ui-dropdown-wrap ${className}`.trim(),
-        }, this.triggerBtn, this.menu);
+            class: `ui-dropdown-wrap ${this.mode === "select" ? "ui-select" : ""} ${className}`.trim(),
+        }, ...children);
 
         this.#renderItems();
 
@@ -51,18 +92,57 @@ export class Dropdown {
         });
     }
 
+    #labelFor(val) {
+        if (!this.rawOptions) return val;
+        const found = this.rawOptions.find((o) => o.value === String(val));
+        return found ? found.label : (this.placeholder || val);
+    }
+
+    get value() {
+        return this.mode === "select" ? this._value : undefined;
+    }
+
+    set value(next) {
+        if (this.mode === "select") {
+            this.select(next, false);
+        }
+    }
+
+    select(val, notify = true) {
+        this._value = String(val ?? "");
+        if (this.hiddenInput) this.hiddenInput.value = this._value;
+        if (this.labelSpan) this.labelSpan.textContent = this.#labelFor(this._value);
+        if (notify) {
+            this.onChange(this._value);
+            const listeners = this._listeners.get("change") || [];
+            for (const fn of listeners) fn({ target: this });
+        }
+    }
+
+    addEventListener(event, fn) {
+        if (!this._listeners.has(event)) this._listeners.set(event, []);
+        this._listeners.get(event).push(fn);
+    }
+
+    removeEventListener(event, fn) {
+        const list = this._listeners.get(event) || [];
+        const idx = list.indexOf(fn);
+        if (idx !== -1) list.splice(idx, 1);
+    }
+
     #renderItems() {
         this.menuElements = [];
         this.menu.replaceChildren(
-            ...this.items.map((item, idx) => {
+            ...this.items.map((item) => {
                 if (item.divider) {
                     return h("hr", { class: "ui-dropdown-divider", role: "separator" });
                 }
 
+                const isSelected = this.mode === "select" && String(item.value) === this._value;
                 const btn = h("button", {
                     type: "button",
                     role: "menuitem",
-                    class: `ui-dropdown-item ${item.danger ? "danger" : ""} ${item.className || ""}`.trim(),
+                    class: `ui-dropdown-item ${item.danger ? "danger" : ""} ${isSelected ? "selected is-active" : ""} ${item.className || ""}`.trim(),
                     disabled: item.disabled ? true : null,
                     onclick: (e) => {
                         e.stopPropagation();

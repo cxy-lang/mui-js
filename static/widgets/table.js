@@ -36,10 +36,10 @@ export class EditableTable {
 
         this.el = h(
             "div",
-            { class: `kv-editor ui-editable-table-wrap ${opts.className || ""}`.trim() },
+            { class: `ui-editable-table-wrap ${opts.className || ""}`.trim() },
             h(
                 "table",
-                { class: `kv-table ui-editable-table ${opts.tableClass || ""}`.trim() },
+                { class: `ui-editable-table ${opts.tableClass || ""}`.trim() },
                 h("thead", {},
                     h("tr", {},
                         ...this.columns.map((c) => h("th", { class: c.cls || null }, c.label)),
@@ -72,13 +72,13 @@ export class EditableTable {
     #append(data) {
         const row = { saved: false, editing: false, ...data };
         row.tr = h("tr");
-        row.errTr = h("tr", { class: "kv-error-row ui-table-error-row", hidden: true },
+        row.errTr = h("tr", { class: "ui-table-error-row", hidden: true },
             h("td", { colspan: this.columns.length + 1 },
                 (row.error = h("small", { class: "field-error ui-field-error", role: "alert" }))
             )
         );
         row.detailsTr = this.opts.detailsRow
-            ? h("tr", { class: "kv-details-row ui-table-details-row", hidden: true },
+            ? h("tr", { class: "ui-table-details-row", hidden: true },
                 h("td", { colspan: this.columns.length + 1 })
             )
             : null;
@@ -179,7 +179,7 @@ export class EditableTable {
                 this.#renderActionButton("x", this.labels.remove(row), () => this.#remove(row), "icon-delete"),
             ];
         }
-        row.tr.replaceChildren(...cells, h("td", { class: "kv-actions ui-table-actions" }, actions));
+        row.tr.replaceChildren(...cells, h("td", { class: "ui-table-actions" }, actions));
         this.#renderDetails(row);
 
         for (const [key, input] of Object.entries(row.inputs)) {

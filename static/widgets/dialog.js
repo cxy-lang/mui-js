@@ -23,7 +23,7 @@ export class Dialog {
         this.article = h("article", { class: "ui-dialog-content" }, header, body, footer);
 
         this.dialog = h("dialog", {
-            class: `ui-dialog crunch-dialog ${className}`.trim(),
+            class: `ui-dialog ${className}`.trim(),
             role: "dialog",
             "aria-modal": "true",
             onclick: (e) => {

@@ -35,15 +35,7 @@ export class Dropdown {
             this.name = name;
             this.placeholder = placeholder;
 
-            this.selectEl = h("select", {
-                name,
-                class: "ui-dropdown-select",
-                style: { display: "none" },
-                tabindex: "-1",
-                "aria-hidden": "true",
-            }, ...this.rawOptions.map((o) => h("option", { value: o.value }, o.label)));
-            this.selectEl.value = this._value;
-
+            this.hiddenInput = h("input", { type: "hidden", name, value: this._value });
             this.labelSpan = h("span", { class: "ui-dropdown-label" }, this.#labelFor(this._value));
             this.arrowSpan = h("span", { class: "ui-dropdown-arrow", "aria-hidden": "true" }, " ▾");
 
@@ -56,10 +48,6 @@ export class Dropdown {
                 value: opt.value,
                 action: () => this.select(opt.value),
             }));
-
-            this.selectEl.addEventListener("change", () => {
-                this.select(this.selectEl.value, false);
-            });
         } else {
             // Action Menu Mode
             this.mode = "menu";
@@ -81,7 +69,7 @@ export class Dropdown {
         });
 
         const children = [this.triggerBtn, this.menu];
-        if (this.selectEl) children.unshift(this.selectEl);
+        if (this.hiddenInput) children.unshift(this.hiddenInput);
 
         this.el = h("div", {
             class: `ui-dropdown-wrap ${this.mode === "select" ? "ui-select" : ""} ${className}`.trim(),
@@ -111,7 +99,7 @@ export class Dropdown {
     }
 
     get value() {
-        return this.mode === "select" ? (this.selectEl ? this.selectEl.value : this._value) : undefined;
+        return this.mode === "select" ? this._value : undefined;
     }
 
     set value(next) {
@@ -121,16 +109,15 @@ export class Dropdown {
     }
 
     get options() {
-        return this.selectEl ? this.selectEl.options : this.rawOptions;
+        return this.rawOptions;
     }
 
     select(val, notify = true) {
         this._value = String(val ?? "");
-        if (this.selectEl) this.selectEl.value = this._value;
+        if (this.hiddenInput) this.hiddenInput.value = this._value;
         if (this.labelSpan) this.labelSpan.textContent = this.#labelFor(this._value);
         if (notify) {
             this.onChange(this._value);
-            if (this.selectEl) this.selectEl.dispatchEvent(new Event("change", { bubbles: true }));
             const listeners = this._listeners.get("change") || [];
             for (const fn of listeners) fn({ target: this });
         }

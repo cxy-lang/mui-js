@@ -1,6 +1,6 @@
 module ssr
 
-import { Request, Response } from "stdlib/http.cxy"
+import { Request, Response, Route } from "stdlib/http.cxy"
 import { View } from "@cxyml"
 
 pub class Insert: View {
@@ -222,15 +222,9 @@ class SsrPage[EndPoint, Context, Page, Layout] {
         })
 
         #if #Context != #NoContext {
-            #if (has_member!(#Page, :mount)) {
+            #if (has_member!(#Page, :mount, #func(_: &Context, _: &Route) -> void)) {
                 // Mount the route
                 Page.mount(&this._context, route)
-            }
-        }
-        else {
-            #if (has_member!(#Page, :mount)) {
-                // Mount the route
-                Page.mount(route)
             }
         }
     }

@@ -282,9 +282,9 @@ export async function buildProject(config = {}, flags = new Map()) {
                     return lines.join("\n");
                 });
 
-                res = res.replace(/from\s*["'](\.\.?\/[^"']+)["']/g, (match, rel) => {
+                res = res.replace(/(from|import)\s*\(?["'](\.\.?\/[^"']+)["']\)?/g, (match, verb, rel) => {
                     const abs = path.resolve(fileDir, rel);
-                    return `from "${abs}"`;
+                    return verb === "import" ? `import("${abs}")` : `from "${abs}"`;
                 });
                 return res;
             }
@@ -295,8 +295,9 @@ export async function buildProject(config = {}, flags = new Map()) {
             const decomposedEntries = [];
             for (const ep of entries) {
                 const src = readFileSync(ep, "utf8");
-                const outName = path.basename(ep);
-                const outPath = path.join(tmpSrc, outName);
+                const relPath = path.relative(rootDir, ep);
+                const outPath = path.join(tmpSrc, relPath);
+                mkdirSync(path.dirname(outPath), { recursive: true });
                 writeFileSync(outPath, decomposeBarrel(src, path.dirname(ep)));
                 decomposedEntries.push(outPath);
             }
@@ -304,8 +305,9 @@ export async function buildProject(config = {}, flags = new Map()) {
             const decomposedPages = [];
             for (const pp of allPages) {
                 const src = readFileSync(pp, "utf8");
-                const outName = path.basename(pp);
-                const outPath = path.join(tmpSrc, outName);
+                const relPath = path.relative(rootDir, pp);
+                const outPath = path.join(tmpSrc, relPath);
+                mkdirSync(path.dirname(outPath), { recursive: true });
                 writeFileSync(outPath, decomposeBarrel(src, path.dirname(pp)));
                 decomposedPages.push(outPath);
             }

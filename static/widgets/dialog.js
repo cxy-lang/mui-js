@@ -9,6 +9,7 @@ export class Dialog {
             type: "button",
             class: "ui-dialog-close",
             "aria-label": "Close",
+            rel: "prev",
             onclick: () => this.close(),
         }, closeIcon) : null;
 
@@ -22,7 +23,7 @@ export class Dialog {
         this.article = h("article", { class: "ui-dialog-content" }, header, body, footer);
 
         this.dialog = h("dialog", {
-            class: `ui-dialog ${className}`.trim(),
+            class: `ui-dialog crunch-dialog ${className}`.trim(),
             role: "dialog",
             "aria-modal": "true",
             onclick: (e) => {

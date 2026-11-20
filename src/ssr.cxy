@@ -222,9 +222,15 @@ class SsrPage[EndPoint, Context, Page, Layout] {
         })
 
         #if #Context != #NoContext {
-            #if (has_member!(Page, "mount", #func(_: &Context) -> void)) {
+            #if (has_member!(#Page, :mount)) {
                 // Mount the route
                 Page.mount(&this._context, route)
+            }
+        }
+        else {
+            #if (has_member!(#Page, :mount)) {
+                // Mount the route
+                Page.mount(route)
             }
         }
     }

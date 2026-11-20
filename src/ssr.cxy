@@ -121,11 +121,12 @@ class SsrPage[EndPoint, Context, Page, Layout] {
 
                 #if PageModel.isVoid {
                     #if #Context == #NoContext {
-                        Page.process(&mws, &ctxs, req)
+                        Page.process(&mws, &ctxs, req, resp)
                     }
                     else {
-                        Page.process(&this._context, &mws, &ctxs, req)
+                        Page.process(&this._context, &mws, &ctxs, req, resp)
                     }
+                    if (resp.isComplete()) return;
                     this.render(resp)
                 }
                 else {
@@ -143,11 +144,12 @@ class SsrPage[EndPoint, Context, Page, Layout] {
             else {
                 #if PageModel.isVoid {
                     #if #Context == #NoContext {
-                        Page.process(&mws, req)
+                        Page.process(&mws, req, resp)
                     }
                     else {
-                        Page.process(&this._context, &mws, req)
+                        Page.process(&this._context, &mws, req, resp)
                     }
+                    if (resp.isComplete()) return;
                     this.render(resp)
                 }
                 else {
@@ -174,11 +176,12 @@ class SsrPage[EndPoint, Context, Page, Layout] {
 
                 #if PageModel.isVoid {
                     #if #Context == #NoContext {
-                        Page.process(&ctxs, req)
+                        Page.process(&ctxs, req, resp)
                     }
                     else {
-                        Page.process(&this._context, &ctxs, req)
+                        Page.process(&this._context, &ctxs, req, resp)
                     }
+                    if (resp.isComplete()) return;
                     this.render(resp)
                 }
                 else {
@@ -196,20 +199,21 @@ class SsrPage[EndPoint, Context, Page, Layout] {
             else {
                 #if PageModel.isVoid {
                     #if #Context == #NoContext {
-                        Page.process(req)
+                        Page.process(req, resp)
                     }
                     else {
-                        Page.process(&this._context, req)
+                        Page.process(&this._context, req, resp)
                     }
+                    if (resp.isComplete()) return;
                     this.render(resp)
                 }
                 else {
                     var model: PageModel? = null
                     #if #Context == #NoContext {
-                        model = Page.process(req)
+                        model = Page.process(req, resp)
                     }
                     else {
-                        model = Page.process(&this._context, req)
+                        model = Page.process(&this._context, req, resp)
                     }
                     if (resp.isComplete() || !model) return;
                     this.render(&&(*model), resp)
